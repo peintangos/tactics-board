@@ -14,9 +14,10 @@
     font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,system-ui,sans-serif;
     -webkit-text-size-adjust:100%;}
   header{padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel);
-    position:sticky;top:0;z-index:5}
+    position:sticky;top:0;z-index:8}
   h1{font-size:14px;margin:0 0 4px;line-height:1.3}
   .sub{font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.4}
+  .selrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px}
   .toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
   .group{display:flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid var(--line);
     border-radius:9px;background:#0d1117}
@@ -35,13 +36,26 @@
   svg#board{display:block;width:100%;height:auto;max-width:760px;margin:0 auto;background:var(--bg)}
   .hint{font-size:11px;color:var(--muted);padding:8px 12px;line-height:1.5}
   .pill{font-size:10px;padding:2px 6px;border-radius:10px;background:#21262d;color:var(--muted)}
+  #more-btn{display:none}
+
   @media(max-width:760px){
-    h1{font-size:13px}
-    .sub{font-size:10px;margin-bottom:6px}
+    h1{font-size:13px;margin-bottom:2px}
+    .sub{display:none}
+    header{padding:6px 9px}
     button,select{min-height:44px;font-size:14px;padding:9px 11px}
     .group{padding:5px 6px;gap:6px}
-    .swatch{width:28px;height:28px}
+    .swatch{width:30px;height:30px}
     svg#board{max-width:100%}
+    .hint{display:none}
+    /* 操作ツールを下部固定バーに */
+    #controls{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--panel);
+      border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+      gap:6px;box-shadow:0 -4px 16px rgba(0,0,0,.5);max-height:48vh;overflow-y:auto;
+      justify-content:center}
+    #controls .secondary{display:none;width:100%;justify-content:center}
+    body.show-more #controls .secondary{display:flex}
+    #more-btn{display:inline-flex}
+    body{padding-bottom:150px}
   }
 </style>
 </head>
@@ -49,20 +63,18 @@
 <header>
   <h1>⚽ 戦術ボード — 日本 vs ブラジル / W杯2026 R32</h1>
   <div class="sub">NRG Stadium, Houston ・ 現地 6/29(月) 13:00（日本時間 6/30 早朝） — 予想スタメン＆動きを描こう</div>
-  <div class="toolbar">
-    <div class="group">
-      <label>日本</label>
-      <select id="fm-japan"></select>
-    </div>
-    <div class="group">
-      <label>ブラジル</label>
-      <select id="fm-brazil"></select>
-    </div>
+  <div class="selrow">
+    <div class="group"><label>日本</label><select id="fm-japan"></select></div>
+    <div class="group"><label>ブラジル</label><select id="fm-brazil"></select></div>
+    <button id="toggle-both">両チーム</button>
+  </div>
+  <div class="toolbar" id="controls">
     <div class="group">
       <button data-tool="select" class="tool active">✋ 動かす</button>
       <button data-tool="arrow" class="tool">↗ 矢印</button>
       <button data-tool="line" class="tool">／ 直線</button>
       <button data-tool="pen" class="tool">✎ ペン</button>
+      <button id="more-btn">⋯ 詳細</button>
     </div>
     <div class="group">
       <span class="swatch active" data-color="#ef4444" style="background:#ef4444"></span>
@@ -74,14 +86,13 @@
       <button id="undo">↩ 戻す</button>
       <button id="clear">描画クリア</button>
     </div>
-    <div class="group">
-      <button id="toggle-both" class="active">両チーム</button>
+    <div class="group secondary">
       <button id="toggle-romaji">英字</button>
       <button id="orient">たて／よこ</button>
-    </div>
-    <div class="group">
       <button id="reset">配置リセット</button>
       <button id="ai">おまかせ配置</button>
+    </div>
+    <div class="group secondary">
       <button id="export-png">🖼 画像で保存</button>
       <button id="share-x" style="background:#000;border-color:#000;color:#fff;font-weight:bold">𝕏 に投稿</button>
     </div>
@@ -97,7 +108,7 @@
   </svg>
 </div>
 <div class="hint">
-  控え選手をピッチへドラッグすると最寄りの選手と<b>交代</b>（常に11人）。ピッチの選手を控えエリアへ出すと交代。「動かす」モードでトークンを自由に移動。矢印／直線／ペンで動きを描けます。内容は自動保存。
+  控え選手をピッチへドラッグすると最寄りの選手と<b>交代</b>（常に11人）。ピッチの選手を控えエリアへ出すと交代。「動かす」でトークン移動、矢印／直線／ペンで動きを描けます。内容は自動保存。
   <span class="pill">背番号：日本=確定 / ブラジル=未割当(?)</span>
 </div>
 
@@ -195,48 +206,60 @@ const ROLE_COLORS={GK:"#f59e0b",DF:"#38bdf8",MF:"#34d399",FW:"#f472b6"};
 function cat(p){return p.pos==="GK"?"GK":p.pos==="DF"?"DF":p.pos==="MF"?"MF":"FW";}
 
 /* =========================================================================
-   レイアウト（向きで切替）
+   レイアウト（向き × 表示モードで切替）
+   solo = 日本のみ → 縦のときハーフコート
    ========================================================================= */
-function getLayout(o){
-  if(o==="portrait"){
-    return {portrait:true, VBW:430, VBH:1090, PX:34, PY:248, PW:362, PH:560, R:21, benchR:18};
-  }
-  return {portrait:false, VBW:1400, VBH:780, PX:215, PY:70, PW:970, PH:640, R:17, benchR:16};
-}
-let L=getLayout("landscape");
-
+function isSmall(){ const w=window.innerWidth||800,h=window.innerHeight||600; return w<760||w<h; }
 function effOrient(){
   if(S && S.orientation && S.orientation!=="auto") return S.orientation;
-  const w=window.innerWidth||800, h=window.innerHeight||600;
-  return (w<760 || w<h) ? "portrait" : "landscape";
+  return isSmall() ? "portrait" : "landscape";
 }
+function getLayout(o,solo){
+  if(o==="portrait"){
+    if(solo){ // ハーフコート・日本のみ
+      return {portrait:true,half:true,alongMax:0.5,
+        VBW:430,VBH:985,PX:34,PY:46,PW:362,PH:690,R:23,benchR:18};
+    }
+    return {portrait:true,half:false,alongMax:1,
+      VBW:430,VBH:1090,PX:34,PY:248,PW:362,PH:560,R:21,benchR:18};
+  }
+  return {portrait:false,half:false,alongMax:1,
+    VBW:1400,VBH:780,PX:215,PY:70,PW:970,PH:640,R:17,benchR:16};
+}
+let L=getLayout("landscape",false);
 
 /* 座標：選手は (a=自陣→敵陣 0..1, c=横 0..1) で保持。向きでSVGに写像 */
 function ptToSvg(a,c){
-  if(L.portrait) return [L.PX + c*L.PW, L.PY + (1-a)*L.PH];
-  return [L.PX + a*L.PW, L.PY + c*L.PH];
+  const af=Math.max(0,Math.min(1, a/L.alongMax));
+  if(L.portrait) return [L.PX + c*L.PW, L.PY + (1-af)*L.PH];
+  return [L.PX + af*L.PW, L.PY + c*L.PH];
 }
 function svgToPt(x,y){
-  let a,c;
-  if(L.portrait){ c=(x-L.PX)/L.PW; a=1-(y-L.PY)/L.PH; }
-  else { a=(x-L.PX)/L.PW; c=(y-L.PY)/L.PH; }
-  return [Math.max(0,Math.min(1,a)), Math.max(0,Math.min(1,c))];
+  let af,c;
+  if(L.portrait){ c=(x-L.PX)/L.PW; af=1-(y-L.PY)/L.PH; }
+  else { af=(x-L.PX)/L.PW; c=(y-L.PY)/L.PH; }
+  const a=Math.max(0,Math.min(1, af*L.alongMax));
+  return [a, Math.max(0,Math.min(1,c))];
 }
 function inPitch(x,y){ return x>=L.PX&&x<=L.PX+L.PW&&y>=L.PY&&y<=L.PY+L.PH; }
 function zoneTeam(x,y){
-  if(L.portrait){ if(y>L.PY+L.PH) return "japan"; if(y<L.PY) return "brazil"; return null; }
+  if(L.portrait){
+    if(L.half) return y>L.PY+L.PH ? "japan" : null;
+    if(y>L.PY+L.PH) return "japan"; if(y<L.PY) return "brazil"; return null;
+  }
   if(x<L.PX) return "japan"; if(x>L.PX+L.PW) return "brazil"; return null;
 }
 
 /* =========================================================================
    状態
    ========================================================================= */
-const LS_KEY="tactics-jpn-bra-v2";
+const LS_KEY="tactics-jpn-bra-v3";
 let S=null;
 
 function defaultState(){
   const st={
-    showBoth:true, romaji:false, orientation:"auto", tool:"select",
+    showBoth: !isSmall(),   // スマホは日本のみ（ハーフコート）を既定に
+    romaji:false, orientation:"auto", tool:"select",
     color:"#ef4444", width:5,
     teams:{ japan:{formation:DATA.teams.japan.defaultFormation},
             brazil:{formation:DATA.teams.brazil.defaultFormation} },
@@ -275,14 +298,15 @@ function applyFormation(tk){
   });
 }
 
-/* ベンチ配置（向きで切替）*/
+/* ベンチ配置 */
 const benchPos={};
 function layoutBench(){
   teamKeys.forEach(tk=>{
+    if(tk==="brazil" && !S.showBoth) return;
     const bench=ROSTER[tk].filter(p=>!S.players[p.id].onPitch);
     if(L.portrait){
-      const perRow=5, margin=42, step=(L.VBW-2*margin)/(perRow-1), rowStep=62;
-      const startY = tk==="brazil" ? 44 : L.PY+L.PH+46;
+      const perRow=5, margin=42, step=(L.VBW-2*margin)/(perRow-1), rowStep=L.half?58:62;
+      const startY = (L.half||tk==="japan") ? L.PY+L.PH+(L.half?34:46) : 44;
       bench.forEach((p,i)=>{
         const col=i%perRow, row=Math.floor(i/perRow);
         benchPos[p.id]={x:margin+col*step, y:startY+row*rowStep};
@@ -316,29 +340,37 @@ const elBg=document.getElementById("bg");
 function drawPitch(){
   const x=L.PX,y=L.PY,w=L.PW,h=L.PH, lw=L.portrait?2.5:3;
   let s=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#1f7a3d" stroke="#dfe9df" stroke-width="${lw}"/>`;
-  const stripes=10;
-  if(L.portrait){
-    const sh=h/stripes;
-    for(let i=0;i<stripes;i++) if(i%2===0) s+=`<rect x="${x}" y="${y+i*sh}" width="${w}" height="${sh}" fill="#1c6f37" opacity="0.5"/>`;
+  if(L.portrait && L.half){
+    const sh=h/8;
+    for(let i=0;i<8;i++) if(i%2===0) s+=`<rect x="${x}" y="${y+i*sh}" width="${w}" height="${sh}" fill="#1c6f37" opacity="0.5"/>`;
+    const cx=x+w/2, arcR=w*0.2;
+    s+=`<circle cx="${cx}" cy="${y}" r="3.5" fill="#dfe9df"/>`;
+    s+=`<path d="M ${cx-arcR} ${y} A ${arcR} ${arcR} 0 0 0 ${cx+arcR} ${y}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
+    const boxW=w*0.62,boxH=h*0.135,boxX=x+(w-boxW)/2;
+    const gW=w*0.32,gH=h*0.05,gX=x+(w-gW)/2;
+    s+=`<rect x="${boxX}" y="${y+h-boxH}" width="${boxW}" height="${boxH}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
+    s+=`<rect x="${gX}" y="${y+h-gH}" width="${gW}" height="${gH}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
+    s+=`<circle cx="${cx}" cy="${y+h-boxH*0.74}" r="3" fill="#dfe9df"/>`;
+    s+=`<text x="${cx}" y="${y+22}" fill="#dfe9df" font-size="12" text-anchor="middle" opacity="0.85">ハーフウェイライン</text>`;
+    s+=`<text x="${cx}" y="${y+h*0.5}" fill="#bfe3cf" font-size="14" text-anchor="middle" opacity="0.5">日本 ↑ 攻撃方向</text>`;
+    s+=`<text x="${L.VBW/2}" y="${y+h+26}" fill="#1f4fd8" font-size="15" font-weight="bold" text-anchor="middle">日本 ベンチ（タップ＆ドラッグで交代）</text>`;
+  } else if(L.portrait){
+    const sh=h/10;
+    for(let i=0;i<10;i++) if(i%2===0) s+=`<rect x="${x}" y="${y+i*sh}" width="${w}" height="${sh}" fill="#1c6f37" opacity="0.5"/>`;
     const cx=x+w/2, cy=y+h/2;
     s+=`<line x1="${x}" y1="${cy}" x2="${x+w}" y2="${cy}" stroke="#dfe9df" stroke-width="${lw}"/>`;
-    s+=`<circle cx="${cx}" cy="${cy}" r="${w*0.20}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
+    s+=`<circle cx="${cx}" cy="${cy}" r="${w*0.2}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
     s+=`<circle cx="${cx}" cy="${cy}" r="4" fill="#dfe9df"/>`;
-    const boxW=w*0.6, boxH=h*0.15, boxX=x+(w-boxW)/2;
-    const gW=w*0.3, gH=h*0.058, gX=x+(w-gW)/2;
+    const boxW=w*0.6,boxH=h*0.15,boxX=x+(w-boxW)/2, gW=w*0.3,gH=h*0.058,gX=x+(w-gW)/2;
     s+=`<rect x="${boxX}" y="${y}" width="${boxW}" height="${boxH}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
     s+=`<rect x="${gX}" y="${y}" width="${gW}" height="${gH}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
     s+=`<rect x="${boxX}" y="${y+h-boxH}" width="${boxW}" height="${boxH}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
     s+=`<rect x="${gX}" y="${y+h-gH}" width="${gW}" height="${gH}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
-    s+=`<circle cx="${cx}" cy="${y+boxH*0.72}" r="3" fill="#dfe9df"/>`;
-    s+=`<circle cx="${cx}" cy="${y+h-boxH*0.72}" r="3" fill="#dfe9df"/>`;
     s+=`<text x="${L.VBW/2}" y="28" fill="#f7d11e" font-size="15" font-weight="bold" text-anchor="middle">ブラジル ベンチ ↓</text>`;
     s+=`<text x="${L.VBW/2}" y="${y+h+34}" fill="#1f4fd8" font-size="15" font-weight="bold" text-anchor="middle">日本 ベンチ ↑</text>`;
-    s+=`<text x="${cx}" y="${y+h-12}" fill="#1f4fd8" font-size="12" text-anchor="middle" opacity="0.9">日本 ↑ 攻撃</text>`;
-    s+=`<text x="${cx}" y="${y+18}" fill="#f7d11e" font-size="12" text-anchor="middle" opacity="0.9">ブラジル ↓ 攻撃</text>`;
   } else {
-    const sw=w/stripes;
-    for(let i=0;i<stripes;i++) if(i%2===0) s+=`<rect x="${x+i*sw}" y="${y}" width="${sw}" height="${h}" fill="#1c6f37" opacity="0.5"/>`;
+    const sw=w/10;
+    for(let i=0;i<10;i++) if(i%2===0) s+=`<rect x="${x+i*sw}" y="${y}" width="${sw}" height="${h}" fill="#1c6f37" opacity="0.5"/>`;
     const midx=x+w/2, cy=y+h/2;
     s+=`<line x1="${midx}" y1="${y}" x2="${midx}" y2="${y+h}" stroke="#dfe9df" stroke-width="${lw}"/>`;
     s+=`<circle cx="${midx}" cy="${cy}" r="${h*0.10}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
@@ -349,9 +381,9 @@ function drawPitch(){
     s+=`<rect x="${x+w-boxW}" y="${cy-boxH/2}" width="${boxW}" height="${boxH}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
     s+=`<rect x="${x+w-gW}" y="${cy-gH/2}" width="${gW}" height="${gH}" fill="none" stroke="#dfe9df" stroke-width="${lw}"/>`;
     s+=`<text x="${L.PX/2}" y="${L.PY-14}" fill="#1f4fd8" font-size="16" font-weight="bold" text-anchor="middle">日本 ベンチ</text>`;
-    s+=`<text x="${L.PX+L.PW+(L.VBW-L.PX-L.PW)/2}" y="${L.PY-14}" fill="#f7d11e" font-size="16" font-weight="bold" text-anchor="middle">ブラジル ベンチ</text>`;
+    if(S.showBoth) s+=`<text x="${L.PX+L.PW+(L.VBW-L.PX-L.PW)/2}" y="${L.PY-14}" fill="#f7d11e" font-size="16" font-weight="bold" text-anchor="middle">ブラジル ベンチ</text>`;
     s+=`<text x="${x+w*0.25}" y="${y+h+24}" fill="#1f4fd8" font-size="13" text-anchor="middle">日本 → 攻撃方向</text>`;
-    s+=`<text x="${x+w*0.75}" y="${y+h+24}" fill="#f7d11e" font-size="13" text-anchor="middle">← ブラジル 攻撃方向</text>`;
+    if(S.showBoth) s+=`<text x="${x+w*0.75}" y="${y+h+24}" fill="#f7d11e" font-size="13" text-anchor="middle">← ブラジル 攻撃方向</text>`;
   }
   elPitch.innerHTML=s;
 }
@@ -412,7 +444,7 @@ function renderDrawings(extra){
 }
 
 function render(){
-  L=getLayout(effOrient());
+  L=getLayout(effOrient(), !S.showBoth);
   svg.setAttribute("viewBox",`0 0 ${L.VBW} ${L.VBH}`);
   elBg.setAttribute("width",L.VBW); elBg.setAttribute("height",L.VBH);
   drawPitch();
@@ -456,7 +488,6 @@ function svgPoint(e){
   const p=pt.matrixTransform(svg.getScreenCTM().inverse());
   return [p.x,p.y];
 }
-
 svg.addEventListener("pointerdown",e=>{
   const [x,y]=svgPoint(e);
   if(S.tool==="select"){
@@ -533,6 +564,7 @@ function load(){
     S=o;
     if(!Array.isArray(S.drawings)) S.drawings=[];
     if(!S.orientation) S.orientation="auto";
+    if(typeof S.showBoth!=="boolean") S.showBoth=!isSmall();
     teamKeys.forEach(tk=>ROSTER[tk].forEach(p=>{ if(!S.players[p.id]) S.players[p.id]={onPitch:false,px:0.5,py:0.5}; }));
     return true;
   }catch(_){ return false; }
@@ -560,14 +592,16 @@ document.querySelectorAll(".swatch").forEach(s=>s.addEventListener("click",()=>{
 }));
 document.getElementById("lw").addEventListener("input",e=>{S.width=+e.target.value;});
 document.getElementById("toggle-both").addEventListener("click",e=>{
-  S.showBoth=!S.showBoth; e.target.classList.toggle("active",S.showBoth);
-  e.target.textContent=S.showBoth?"両チーム":"日本のみ"; render();
+  S.showBoth=!S.showBoth; render(); syncToolbar();
 });
 document.getElementById("toggle-romaji").addEventListener("click",e=>{
   S.romaji=!S.romaji; e.target.classList.toggle("active",S.romaji); render();
 });
 document.getElementById("orient").addEventListener("click",()=>{
   S.orientation = effOrient()==="portrait" ? "landscape" : "portrait"; render();
+});
+document.getElementById("more-btn").addEventListener("click",()=>{
+  document.body.classList.toggle("show-more");
 });
 document.getElementById("undo").addEventListener("click",()=>{ S.drawings.pop(); render(); });
 document.getElementById("clear").addEventListener("click",()=>{ S.drawings=[]; render(); });
@@ -599,6 +633,7 @@ document.getElementById("ai").addEventListener("click",()=>{
   render();
   alert("おまかせ配置を入れました（各ポジションから機械的に選出。予想の当否は保証しません）。");
 });
+
 function buildPngBlob(sc){
   return new Promise((resolve,reject)=>{
     const clone=svg.cloneNode(true);
@@ -633,7 +668,6 @@ document.getElementById("share-x").addEventListener("click",async()=>{
   const shareText=`予想フォーメーション 日本 ${fm}（vs ブラジル / W杯R32）\n${tag}`;
   let blob=null;
   try{ blob=await buildPngBlob(2); }catch(_){ }
-  // モバイル等：画像つきネイティブ共有
   if(blob){
     try{
       const file=new File([blob],"japan-formation.png",{type:"image/png"});
@@ -642,10 +676,8 @@ document.getElementById("share-x").addEventListener("click",async()=>{
         return;
       }
     }catch(err){ if(err && err.name==="AbortError") return; }
-    // フォールバック：画像を保存
     downloadBlob(blob,"japan-formation.png");
   }
-  // Xの投稿作成画面（テキスト＋ハッシュタグを自動入力。画像は手動添付）
   const intentText=`予想フォーメーション 日本 ${fm}（vs ブラジル / W杯R32）`;
   const url="https://twitter.com/intent/tweet?text="+encodeURIComponent(intentText)
     +"&hashtags="+encodeURIComponent("サッカー日本代表を応援");
